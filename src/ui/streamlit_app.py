@@ -159,47 +159,68 @@ def render_step(step_text):
 
 
 def render_flight_card(flight, is_recommended=False, show_date=False):
-    card_class = "flight-card flight-recommended" if is_recommended else "flight-card"
+    """Render a flight card using Streamlit-native components."""
     dep = flight.get("departure_time", "").split("T")[1][:5] if "T" in flight.get("departure_time", "") else ""
     arr = flight.get("arrival_time", "").split("T")[1][:5] if "T" in flight.get("arrival_time", "") else ""
     stops_str = "Direct" if flight.get("stops", 0) == 0 else f"{flight.get('stops')} stop(s)"
     date_str = flight.get("search_date", "") if show_date else ""
+    price = flight.get("price", 0)
 
-    tags_html = ""
+    # Build tags
+    tags = []
     if is_recommended:
-        tags_html += '<span class="flight-tag tag-recommended">⭐ Recommended</span>'
-
+        tags.append("⭐ Recommended")
     all_flights = st.session_state.get("_current_flights", [])
     if all_flights:
-        if flight.get("price") == min(f["price"] for f in all_flights):
-            tags_html += '<span class="flight-tag tag-cheapest">💰 Cheapest</span>'
+        if price == min(f["price"] for f in all_flights):
+            tags.append("💰 Cheapest")
         if flight.get("duration_hours") == min(f.get("duration_hours", 99) for f in all_flights):
-            tags_html += '<span class="flight-tag tag-fastest">⚡ Fastest</span>'
+            tags.append("⚡ Fastest")
         if flight.get("stops", 1) == 0:
-            tags_html += '<span class="flight-tag">✈️ Direct</span>'
+            tags.append("✈️ Direct")
 
-    date_display = f'<span style="color: rgba(255,255,255,0.4); font-size: 0.8rem; margin-left: 0.5rem;">{date_str}</span>' if date_str else ""
+    border_color = "#10b981" if is_recommended else "rgba(255,255,255,0.08)"
+    bg = "rgba(16,185,129,0.06)" if is_recommended else "rgba(255,255,255,0.02)"
 
-    st.markdown(f"""
-    <div class="{card_class}">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <strong style="font-size: 1.1rem;">{flight.get('flight_number', '')}</strong>
-                <span style="color: rgba(255,255,255,0.5); margin-left: 0.5rem;">{flight.get('airline', '')}</span>
-                {date_display}
-            </div>
-            <div style="font-size: 1.25rem; font-weight: 700; color: #818cf8;">
-                ₹{flight.get('price', 0):,.0f}
-            </div>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; color: rgba(255,255,255,0.7); font-size: 0.9rem;">
-            <span>{dep} → {arr}</span>
-            <span>{flight.get('duration_display', '')}</span>
-            <span>{stops_str}</span>
-        </div>
-        <div style="margin-top: 0.5rem;">{tags_html}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Build compact HTML that Streamlit renders reliably
+    tags_str = " &nbsp;".join(
+        f'<span style="background:rgba(99,102,241,0.15);color:#a5b4fc;padding:2px 8px;'
+        f'border-radius:12px;font-size:0.7rem;font-weight:600;">{t}</span>'
+        for t in tags
+    )
+
+    date_part = f' <span style="color:rgba(255,255,255,0.4);font-size:0.8rem;">| {date_str}</span>' if date_str else ""
+
+    html = (
+        f'<div style="background:{bg};border:1px solid {border_color};border-radius:12px;'
+        f'padding:12px 16px;margin-bottom:8px;">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+        f'<div><b>{flight.get("flight_number","")}</b>'
+        f' <span style="color:rgba(255,255,255,0.5);">{flight.get("airline","")}</span>'
+        f'{date_part}</div>'
+        f'<div style="font-size:1.2rem;font-weight:700;color:#818cf8;">₹{price:,.0f}</div>'
+        f'</div>'
+        f'<div style="color:rgba(255,255,255,0.6);font-size:0.85rem;margin-top:6px;">'
+        f'{dep} → {arr} &nbsp;|&nbsp; {flight.get("duration_display","")} &nbsp;|&nbsp; {stops_str}'
+        f'</div>'
+    )
+    if tags_str:
+        html += f'<div style="margin-top:6px;">{tags_str}</div>'
+    html += '</div>'
+
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def format_response_html(text: str) -> str:
+    """Convert plain text response to HTML with proper line breaks."""
+    import html as html_lib
+    safe = html_lib.escape(text)
+    # Convert newlines to <br>
+    safe = safe.replace("\n\n", "<br><br>")
+    safe = safe.replace("\n", "<br>")
+    # Re-bold patterns like ── Section ──
+    safe = safe.replace("──", "—")
+    return safe
 
 
 # ══════════════════════════════════════════════════════════════
@@ -300,7 +321,7 @@ if page == "🤖 Agent":
             "Any flights from Mumbai to Goa next month?",
         ]
         resched_samples = [
-            "My booking BK1024, change to July 23.",
+            "My booking BK1024, change to July 25.",
             "Reschedule booking BK1025 to August 5th.",
         ]
 
@@ -397,8 +418,10 @@ if page == "🤖 Agent":
                     st.markdown("##### 💬 Agent Response")
                     icon = "✅" if is_reschedule else "🔍"
                     label = "Confirmation" if is_reschedule else "Search Results"
+                    response_html = format_response_html(result["message"])
                     st.markdown(
-                        f'<div class="response-card"><h3>{icon} {label}</h3>{result["message"]}</div>',
+                        f'<div class="response-card"><h3>{icon} {label}</h3>'
+                        f'<div style="line-height:1.7;">{response_html}</div></div>',
                         unsafe_allow_html=True,
                     )
 
@@ -408,9 +431,10 @@ if page == "🤖 Agent":
 
             elif result["status"] in ["Failed", "Incomplete", "Unsupported"]:
                 st.markdown("##### 💬 Response")
+                response_html = format_response_html(result["message"])
                 st.markdown(
                     f'<div class="response-card" style="border-color: rgba(59,130,246,0.3);">'
-                    f'<h3>ℹ️ Agent Response</h3>{result["message"]}</div>',
+                    f'<h3>ℹ️ Agent Response</h3><div style="line-height:1.7;">{response_html}</div></div>',
                     unsafe_allow_html=True,
                 )
                 if result.get("steps"):
