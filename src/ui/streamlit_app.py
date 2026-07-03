@@ -1,17 +1,13 @@
 """
-Streamlit UI for the AI Flight Search & Rescheduling Agent v3.
+Streamlit UI — AI Flight Agent.
 
-Features:
-- Dual-intent: Flight Search AND Flight Rescheduling
-- Multi-day flight search results with date grouping
-- Recommended flight highlight with comparison badges
-- Cost breakdown for rescheduling
-- Step-by-step workflow visualization
-- Bookings and Logs browsers
+Professional SaaS dashboard for flight search and rescheduling.
+Light theme with clean typography and consistent spacing.
 """
 
 import time
 import sys
+import html as html_lib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -22,258 +18,396 @@ import pandas as pd
 
 from config import FASTAPI_URL
 
-# ══════════════════════════════════════════════════════════════
-# PAGE CONFIGURATION
-# ══════════════════════════════════════════════════════════════
+# ── Page Config ───────────────────────────────────────────────
 st.set_page_config(
-    page_title="AI Flight Agent",
+    page_title="Flight Agent",
     page_icon="✈️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ══════════════════════════════════════════════════════════════
-# CUSTOM CSS
-# ══════════════════════════════════════════════════════════════
-st.markdown("""
+# ── Design Tokens ─────────────────────────────────────────────
+C_BG = "#F8FAFC"
+C_SURFACE = "#FFFFFF"
+C_PRIMARY = "#2563EB"
+C_PRIMARY_LIGHT = "#EFF6FF"
+C_TEXT = "#0F172A"
+C_TEXT_SEC = "#64748B"
+C_BORDER = "#E2E8F0"
+C_SUCCESS = "#22C55E"
+C_SUCCESS_LIGHT = "#F0FDF4"
+C_WARNING = "#F59E0B"
+C_WARNING_LIGHT = "#FFFBEB"
+C_ERROR = "#EF4444"
+C_ERROR_LIGHT = "#FEF2F2"
+RADIUS = "10px"
+SHADOW = "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)"
+
+# ── Global Styles ─────────────────────────────────────────────
+st.markdown(f"""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    .stApp { font-family: 'Inter', sans-serif; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    .main-header {
-        background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-        padding: 2rem 2.5rem; border-radius: 16px; margin-bottom: 2rem;
-        border: 1px solid rgba(255,255,255,0.08);
-        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-    }
-    .main-header h1 { color: #fff; font-size: 2rem; font-weight: 700; margin: 0; }
-    .main-header p { color: rgba(255,255,255,0.65); font-size: 0.95rem; margin-top: 0.5rem; }
+    /* Base */
+    .stApp {{
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background-color: {C_BG};
+    }}
+    #MainMenu, footer, header {{ visibility: hidden; }}
 
-    .badge {
-        display: inline-block; padding: 0.25rem 0.75rem; border-radius: 20px;
-        font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em;
-        margin-right: 0.5rem; margin-bottom: 0.75rem;
-    }
-    .badge-ai { background: rgba(99,102,241,0.2); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); }
-    .badge-rag { background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
-    .badge-agent { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
-    .badge-live { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
-    .badge-search { background: rgba(59,130,246,0.2); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+    /* Sidebar */
+    section[data-testid="stSidebar"] {{
+        background: {C_SURFACE};
+        border-right: 1px solid {C_BORDER};
+    }}
+    section[data-testid="stSidebar"] .stRadio label {{
+        font-size: 14px;
+        color: {C_TEXT};
+    }}
 
-    .step-card {
-        background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 0.5rem;
-        font-size: 0.9rem; transition: all 0.3s ease;
-    }
-    .step-card:hover { background: rgba(255,255,255,0.06); }
-    .step-success { border-left: 3px solid #10b981; }
-    .step-error { border-left: 3px solid #ef4444; }
-    .step-info { border-left: 3px solid #3b82f6; }
+    /* Typography */
+    h1, h2, h3, h4, h5, h6 {{
+        font-family: 'Inter', sans-serif;
+        color: {C_TEXT};
+    }}
+    p, li, span, div {{
+        font-family: 'Inter', sans-serif;
+    }}
 
-    .stat-card {
-        background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px; padding: 1rem 1.25rem; text-align: center;
-    }
-    .stat-card h2 { color: #818cf8; font-size: 1.5rem; margin: 0; }
-    .stat-card p { color: rgba(255,255,255,0.5); font-size: 0.75rem; margin: 0.25rem 0 0;
-        text-transform: uppercase; letter-spacing: 0.06em; }
+    /* Native Streamlit overrides */
+    .stTextArea textarea {{
+        border: 1px solid {C_BORDER};
+        border-radius: 8px;
+        font-size: 14px;
+        background: {C_SURFACE};
+        color: {C_TEXT};
+    }}
+    .stTextArea textarea:focus {{
+        border-color: {C_PRIMARY};
+        box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+    }}
+    .stButton > button[kind="primary"] {{
+        background: {C_PRIMARY};
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 14px;
+        padding: 8px 20px;
+        transition: background 0.15s ease;
+    }}
+    .stButton > button[kind="primary"]:hover {{
+        background: #1D4ED8;
+    }}
+    .stButton > button:not([kind="primary"]) {{
+        background: {C_SURFACE};
+        border: 1px solid {C_BORDER};
+        border-radius: 8px;
+        color: {C_TEXT};
+        font-size: 13px;
+        font-weight: 500;
+        padding: 6px 14px;
+        transition: all 0.15s ease;
+    }}
+    .stButton > button:not([kind="primary"]):hover {{
+        background: {C_BG};
+        border-color: #CBD5E1;
+    }}
+    div[data-testid="stDataFrame"] {{
+        border: 1px solid {C_BORDER};
+        border-radius: {RADIUS};
+        overflow: hidden;
+    }}
+    .stExpander {{
+        border: 1px solid {C_BORDER};
+        border-radius: {RADIUS};
+    }}
 
-    .flight-card {
-        background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 0.75rem;
-    }
-    .flight-card:hover { background: rgba(255,255,255,0.06); }
-    .flight-recommended {
-        background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(59,130,246,0.08));
-        border: 1px solid rgba(16,185,129,0.3);
-        box-shadow: 0 4px 16px rgba(16,185,129,0.1);
-    }
-
-    .flight-tag {
-        display: inline-block; padding: 0.15rem 0.5rem; border-radius: 12px;
-        font-size: 0.7rem; font-weight: 600; margin-right: 0.4rem;
-        background: rgba(99,102,241,0.15); color: #a5b4fc;
-        border: 1px solid rgba(99,102,241,0.2);
-    }
-    .tag-recommended { background: rgba(16,185,129,0.2); color: #34d399; border-color: rgba(16,185,129,0.3); }
-    .tag-cheapest { background: rgba(245,158,11,0.2); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
-    .tag-fastest { background: rgba(59,130,246,0.2); color: #60a5fa; border-color: rgba(59,130,246,0.3); }
-
-    .response-card {
-        background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(59,130,246,0.08));
-        border: 1px solid rgba(16,185,129,0.2); border-radius: 16px;
-        padding: 1.5rem 2rem; margin-top: 1rem; line-height: 1.7;
-    }
-    .response-card h3 { color: #34d399; font-size: 1.1rem; margin-bottom: 1rem; }
-
-    .cost-card {
-        background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px; padding: 1rem 1.5rem;
-    }
-    .cost-row { display: flex; justify-content: space-between; padding: 0.4rem 0; font-size: 0.9rem; }
-    .cost-row.total { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.6rem; margin-top: 0.4rem; font-weight: 700; }
-
-    .sidebar-section {
-        background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 10px; padding: 1rem; margin-bottom: 1rem;
-    }
-
-    #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
+    /* Custom component classes */
+    .page-title {{
+        font-size: 22px;
+        font-weight: 700;
+        color: {C_TEXT};
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+    }}
+    .page-subtitle {{
+        font-size: 14px;
+        color: {C_TEXT_SEC};
+        margin: 0 0 24px 0;
+        line-height: 1.5;
+    }}
+    .section-label {{
+        font-size: 12px;
+        font-weight: 600;
+        color: {C_TEXT_SEC};
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 0 0 12px 0;
+    }}
+    .card {{
+        background: {C_SURFACE};
+        border: 1px solid {C_BORDER};
+        border-radius: {RADIUS};
+        padding: 20px 24px;
+        box-shadow: {SHADOW};
+    }}
+    .kpi {{
+        background: {C_SURFACE};
+        border: 1px solid {C_BORDER};
+        border-radius: {RADIUS};
+        padding: 16px 20px;
+        box-shadow: {SHADOW};
+    }}
+    .kpi-value {{
+        font-size: 24px;
+        font-weight: 700;
+        color: {C_TEXT};
+        margin: 0;
+        line-height: 1.2;
+    }}
+    .kpi-label {{
+        font-size: 11px;
+        font-weight: 600;
+        color: {C_TEXT_SEC};
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 4px 0 0 0;
+    }}
+    .flight-row {{
+        background: {C_SURFACE};
+        border: 1px solid {C_BORDER};
+        border-radius: 8px;
+        padding: 14px 18px;
+        margin-bottom: 8px;
+        transition: box-shadow 0.15s ease;
+    }}
+    .flight-row:hover {{
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }}
+    .flight-row.recommended {{
+        border-color: {C_SUCCESS};
+        background: {C_SUCCESS_LIGHT};
+    }}
+    .flight-num {{
+        font-size: 14px;
+        font-weight: 600;
+        color: {C_TEXT};
+    }}
+    .flight-airline {{
+        font-size: 13px;
+        color: {C_TEXT_SEC};
+        margin-left: 8px;
+    }}
+    .flight-price {{
+        font-size: 16px;
+        font-weight: 700;
+        color: {C_TEXT};
+    }}
+    .flight-meta {{
+        font-size: 13px;
+        color: {C_TEXT_SEC};
+        margin-top: 6px;
+    }}
+    .tag {{
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        margin-right: 6px;
+    }}
+    .tag-rec {{ background: {C_SUCCESS_LIGHT}; color: #15803D; }}
+    .tag-cheap {{ background: {C_WARNING_LIGHT}; color: #B45309; }}
+    .tag-fast {{ background: {C_PRIMARY_LIGHT}; color: #1D4ED8; }}
+    .tag-direct {{ background: #F0F9FF; color: #0369A1; }}
+    .response-box {{
+        background: {C_SURFACE};
+        border: 1px solid {C_BORDER};
+        border-radius: {RADIUS};
+        padding: 20px 24px;
+        box-shadow: {SHADOW};
+        font-size: 14px;
+        line-height: 1.75;
+        color: {C_TEXT};
+    }}
+    .step-item {{
+        padding: 8px 12px;
+        margin-bottom: 4px;
+        border-radius: 6px;
+        font-size: 13px;
+        color: {C_TEXT};
+        background: {C_BG};
+        border-left: 3px solid {C_BORDER};
+    }}
+    .step-ok {{ border-left-color: {C_SUCCESS}; }}
+    .step-err {{ border-left-color: {C_ERROR}; }}
+    .step-info {{ border-left-color: {C_PRIMARY}; }}
+    .cost-line {{
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        font-size: 14px;
+        color: {C_TEXT};
+    }}
+    .cost-total {{
+        border-top: 1px solid {C_BORDER};
+        margin-top: 4px;
+        padding-top: 10px;
+        font-weight: 700;
+    }}
+    .nav-label {{
+        font-size: 11px;
+        font-weight: 600;
+        color: {C_TEXT_SEC};
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin: 0 0 8px 0;
+    }}
+    .sidebar-footer {{
+        font-size: 11px;
+        color: #94A3B8;
+        text-align: center;
+        padding: 16px 0;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════
-# HELPERS
-# ══════════════════════════════════════════════════════════════
+# ── API Helpers ───────────────────────────────────────────────
 
-def call_agent_api(query: str) -> dict | None:
+def call_agent(query: str) -> dict | None:
+    """Send a query to the agent backend."""
     try:
-        r = requests.post(f"{FASTAPI_URL}/agent/process", json={"query": query}, timeout=120)
+        r = requests.post(
+            f"{FASTAPI_URL}/agent/process",
+            json={"query": query},
+            timeout=120,
+        )
         return r.json() if r.status_code == 200 else None
     except requests.exceptions.ConnectionError:
-        st.error("⚠️ Cannot connect to backend. Start it with: `python main.py`")
+        st.error("Cannot connect to backend. Run `python main.py` first.")
         return None
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Request failed: {e}")
         return None
 
 
-def get_bookings():
+def fetch_bookings() -> list:
     try:
         r = requests.get(f"{FASTAPI_URL}/bookings", timeout=10)
         return r.json().get("bookings", []) if r.status_code == 200 else []
-    except: return []
+    except Exception:
+        return []
 
 
-def get_logs():
+def fetch_logs() -> list:
     try:
         r = requests.get(f"{FASTAPI_URL}/logs", timeout=10)
         return r.json().get("logs", []) if r.status_code == 200 else []
-    except: return []
+    except Exception:
+        return []
 
 
-def render_step(step_text):
-    css = "step-success" if "✅" in step_text else "step-error" if "❌" in step_text else "step-info"
-    st.markdown(f'<div class="step-card {css}">{step_text}</div>', unsafe_allow_html=True)
+# ── Render Helpers ────────────────────────────────────────────
+
+def render_kpi(value: str, label: str):
+    """Render a compact KPI card."""
+    st.markdown(
+        f'<div class="kpi">'
+        f'<p class="kpi-value">{value}</p>'
+        f'<p class="kpi-label">{label}</p>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
-def render_flight_card(flight, is_recommended=False, show_date=False):
-    """Render a flight card using Streamlit-native components."""
-    dep = flight.get("departure_time", "").split("T")[1][:5] if "T" in flight.get("departure_time", "") else ""
-    arr = flight.get("arrival_time", "").split("T")[1][:5] if "T" in flight.get("arrival_time", "") else ""
-    stops_str = "Direct" if flight.get("stops", 0) == 0 else f"{flight.get('stops')} stop(s)"
-    date_str = flight.get("search_date", "") if show_date else ""
+def render_flight(flight: dict, is_rec: bool = False, show_date: bool = False):
+    """Render a single flight row."""
+    dep = flight.get("departure_time", "")
+    dep = dep.split("T")[1][:5] if "T" in dep else dep
+    arr = flight.get("arrival_time", "")
+    arr = arr.split("T")[1][:5] if "T" in arr else arr
+    stops = "Direct" if flight.get("stops", 0) == 0 else f"{flight['stops']} stop"
     price = flight.get("price", 0)
+    date_str = flight.get("search_date", "") if show_date else ""
 
-    # Build tags
-    tags = []
-    if is_recommended:
-        tags.append("⭐ Recommended")
-    all_flights = st.session_state.get("_current_flights", [])
-    if all_flights:
-        if price == min(f["price"] for f in all_flights):
-            tags.append("💰 Cheapest")
-        if flight.get("duration_hours") == min(f.get("duration_hours", 99) for f in all_flights):
-            tags.append("⚡ Fastest")
-        if flight.get("stops", 1) == 0:
-            tags.append("✈️ Direct")
+    # Tags
+    tags_html = ""
+    if is_rec:
+        tags_html += '<span class="tag tag-rec">Recommended</span>'
+    all_f = st.session_state.get("_flights", [])
+    if all_f:
+        if price <= min(f["price"] for f in all_f):
+            tags_html += '<span class="tag tag-cheap">Lowest price</span>'
+        if flight.get("duration_hours", 99) <= min(f.get("duration_hours", 99) for f in all_f):
+            tags_html += '<span class="tag tag-fast">Fastest</span>'
+        if flight.get("stops", 1) == 0 and not is_rec:
+            tags_html += '<span class="tag tag-direct">Nonstop</span>'
 
-    border_color = "#10b981" if is_recommended else "rgba(255,255,255,0.08)"
-    bg = "rgba(16,185,129,0.06)" if is_recommended else "rgba(255,255,255,0.02)"
+    cls = "flight-row recommended" if is_rec else "flight-row"
+    date_part = f'<span style="color:{C_TEXT_SEC};font-size:12px;margin-left:10px;">{date_str}</span>' if date_str else ""
+    tags_div = f'<div style="margin-top:6px;">{tags_html}</div>' if tags_html else ""
 
-    # Build compact HTML that Streamlit renders reliably
-    tags_str = " &nbsp;".join(
-        f'<span style="background:rgba(99,102,241,0.15);color:#a5b4fc;padding:2px 8px;'
-        f'border-radius:12px;font-size:0.7rem;font-weight:600;">{t}</span>'
-        for t in tags
-    )
-
-    date_part = f' <span style="color:rgba(255,255,255,0.4);font-size:0.8rem;">| {date_str}</span>' if date_str else ""
-
-    html = (
-        f'<div style="background:{bg};border:1px solid {border_color};border-radius:12px;'
-        f'padding:12px 16px;margin-bottom:8px;">'
+    st.markdown(
+        f'<div class="{cls}">'
         f'<div style="display:flex;justify-content:space-between;align-items:center;">'
-        f'<div><b>{flight.get("flight_number","")}</b>'
-        f' <span style="color:rgba(255,255,255,0.5);">{flight.get("airline","")}</span>'
+        f'<div><span class="flight-num">{flight.get("flight_number","")}</span>'
+        f'<span class="flight-airline">{flight.get("airline","")}</span>'
         f'{date_part}</div>'
-        f'<div style="font-size:1.2rem;font-weight:700;color:#818cf8;">₹{price:,.0f}</div>'
+        f'<span class="flight-price">₹{price:,.0f}</span>'
         f'</div>'
-        f'<div style="color:rgba(255,255,255,0.6);font-size:0.85rem;margin-top:6px;">'
-        f'{dep} → {arr} &nbsp;|&nbsp; {flight.get("duration_display","")} &nbsp;|&nbsp; {stops_str}'
-        f'</div>'
+        f'<div class="flight-meta">{dep} → {arr}  ·  {flight.get("duration_display","")}  ·  {stops}</div>'
+        f'{tags_div}'
+        f'</div>',
+        unsafe_allow_html=True,
     )
-    if tags_str:
-        html += f'<div style="margin-top:6px;">{tags_str}</div>'
-    html += '</div>'
-
-    st.markdown(html, unsafe_allow_html=True)
 
 
-def format_response_html(text: str) -> str:
-    """Convert plain text response to HTML with proper line breaks."""
-    import html as html_lib
+def render_step(text: str):
+    """Render a workflow step."""
+    cls = "step-ok" if "✅" in text else "step-err" if "❌" in text else "step-info"
+    clean = text.replace("✅ ", "").replace("❌ ", "").replace("ℹ️ ", "").replace("⚠️ ", "")
+    st.markdown(f'<div class="step-item {cls}">{clean}</div>', unsafe_allow_html=True)
+
+
+def format_response(text: str) -> str:
+    """Sanitize and format agent response text for HTML display."""
     safe = html_lib.escape(text)
-    # Convert newlines to <br>
-    safe = safe.replace("\n\n", "<br><br>")
-    safe = safe.replace("\n", "<br>")
-    # Re-bold patterns like ── Section ──
+    safe = safe.replace("\n\n", "<br><br>").replace("\n", "<br>")
     safe = safe.replace("──", "—")
     return safe
 
 
-# ══════════════════════════════════════════════════════════════
-# SIDEBAR
-# ══════════════════════════════════════════════════════════════
+# ── Sidebar ───────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("### 🧭 Navigation")
-    page = st.radio("", ["🤖 Agent", "📋 Bookings", "📊 Logs"], label_visibility="collapsed")
+    st.markdown(
+        f'<div style="padding:8px 0 16px;">'
+        f'<span style="font-size:18px;font-weight:700;color:{C_TEXT};">Flight Agent</span>'
+        f'<span style="font-size:11px;color:{C_TEXT_SEC};margin-left:8px;">v3.0</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<p class="nav-label">Navigation</p>', unsafe_allow_html=True)
+    page = st.radio(
+        "nav",
+        ["Agent", "Bookings", "Logs"],
+        label_visibility="collapsed",
+    )
 
     st.markdown("---")
-    st.markdown("### 🏗️ Architecture")
-    st.markdown("""
-    <div class="sidebar-section">
-        <span class="badge badge-ai">Gemini LLM</span>
-        <span class="badge badge-live">Live Flights</span>
-        <span class="badge badge-search">Dual Intent</span>
-        <span class="badge badge-rag">RAG Pipeline</span>
-        <span class="badge badge-agent">LangGraph</span>
-        <br/>
-        <strong>Stack:</strong> LangGraph + Gemini + Aviationstack + FastAPI + ChromaDB + SQLite
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("### 📐 Dual Workflow")
-    st.markdown("""
-    ```
-    Customer Request
-         ↓
-    Detect Intent
-       /       \\
-    Search    Reschedule
-      ↓          ↓
-    Extract    Extract
-      ↓          ↓
-    Parse      Booking
-    Dates        ↓
-      ↓       Flights
-    Multi-       ↓
-    Search    Compare
-      ↓          ↓
-    Compare   Policy+Fee
-      ↓          ↓
-    Response   Update
-      ↓          ↓
-     Log        Log
-    ```
-    """)
+    st.markdown('<p class="nav-label">Stack</p>', unsafe_allow_html=True)
+    stack_items = ["LangGraph", "Gemini LLM", "Aviationstack API", "FastAPI", "ChromaDB", "SQLite"]
+    for item in stack_items:
+        st.markdown(
+            f'<div style="font-size:13px;color:{C_TEXT_SEC};padding:2px 0;">{item}</div>',
+            unsafe_allow_html=True,
+        )
 
     st.markdown("---")
     st.markdown(
-        "<p style='color: rgba(255,255,255,0.3); font-size: 0.75rem; text-align: center;'>"
-        "AI Flight Agent v3.0<br/>Dual Intent | Live Search</p>",
+        f'<p class="sidebar-footer">Dual intent · Live search<br>Built with LangGraph</p>',
         unsafe_allow_html=True,
     )
 
@@ -282,189 +416,216 @@ with st.sidebar:
 # AGENT PAGE
 # ══════════════════════════════════════════════════════════════
 
-if page == "🤖 Agent":
-    st.markdown("""
-    <div class="main-header">
-        <h1>✈️ AI Flight Search & Rescheduling Agent</h1>
-        <p>
-            Search for flights using natural language or reschedule existing bookings.
-            The agent understands flexible dates like "next week" or "this weekend"
-            and searches across multiple days to find your best option.
-        </p>
-        <span class="badge badge-search">Natural Language Search</span>
-        <span class="badge badge-ai">Gemini LLM</span>
-        <span class="badge badge-live">Live Flights</span>
-        <span class="badge badge-rag">RAG Policy</span>
-        <span class="badge badge-agent">LangGraph</span>
-    </div>
-    """, unsafe_allow_html=True)
+if page == "Agent":
+    st.markdown('<p class="page-title">Flight Agent</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="page-subtitle">'
+        'Search for flights or reschedule existing bookings using natural language.'
+        '</p>',
+        unsafe_allow_html=True,
+    )
 
-    col_input, col_samples = st.columns([3, 2])
+    # ── Input Area ────────────────────────────────────────────
+    col_in, col_ex = st.columns([3, 2], gap="large")
 
-    with col_input:
-        st.markdown("#### 💬 What would you like to do?")
+    with col_in:
+        st.markdown('<p class="section-label">Your request</p>', unsafe_allow_html=True)
         user_query = st.text_area(
-            "Enter your request:",
-            height=120,
-            placeholder="e.g., Find me the cheapest flight from Delhi to Mumbai next week.",
+            "query",
+            height=96,
+            placeholder="e.g. Find the cheapest flight from Delhi to Mumbai next week",
             label_visibility="collapsed",
         )
-        process_btn = st.button("🚀 Process Request", type="primary", use_container_width=True)
+        process_btn = st.button("Process request", type="primary", use_container_width=True)
 
-    with col_samples:
-        st.markdown("#### 📝 Try These Examples")
+    with col_ex:
+        st.markdown('<p class="section-label">Examples</p>', unsafe_allow_html=True)
 
-        search_samples = [
-            "Find flights from Hyderabad to Mumbai next week. Cheapest option.",
-            "I want to travel from Delhi to Bangalore tomorrow.",
-            "Show me flights from Chennai to Delhi this weekend.",
-            "Any flights from Mumbai to Goa next month?",
+        examples = [
+            ("Search", "Find flights from Hyderabad to Mumbai next week. Cheapest option."),
+            ("Search", "I want to travel from Delhi to Bangalore tomorrow."),
+            ("Search", "Show me flights from Chennai to Delhi this weekend."),
+            ("Reschedule", "My booking BK1024, change to July 25."),
+            ("Reschedule", "Reschedule booking BK1025 to August 5th."),
         ]
-        resched_samples = [
-            "My booking BK1024, change to July 25.",
-            "Reschedule booking BK1025 to August 5th.",
-        ]
-
-        st.markdown("**🔍 Flight Search:**")
-        for i, s in enumerate(search_samples):
-            if st.button(f"📨 {s[:50]}...", key=f"ss_{i}", use_container_width=True):
-                st.session_state["sample_query"] = s
+        for i, (kind, text) in enumerate(examples):
+            label = text[:55] + ("..." if len(text) > 55 else "")
+            if st.button(label, key=f"ex_{i}", use_container_width=True):
+                st.session_state["_sample"] = text
                 st.rerun()
 
-        st.markdown("**🔄 Rescheduling:**")
-        for i, s in enumerate(resched_samples):
-            if st.button(f"📨 {s[:50]}...", key=f"rs_{i}", use_container_width=True):
-                st.session_state["sample_query"] = s
-                st.rerun()
+    if "_sample" in st.session_state:
+        user_query = st.session_state.pop("_sample")
 
-    if "sample_query" in st.session_state:
-        user_query = st.session_state.pop("sample_query")
-
-    st.markdown("---")
-
-    # ── Process Request ───────────────────────────────────────
+    # ── Process ───────────────────────────────────────────────
     if process_btn and user_query:
-        st.markdown("#### ⚙️ Agent Workflow Execution")
+        with st.spinner("Processing..."):
+            t0 = time.time()
+            result = call_agent(user_query)
+            elapsed = time.time() - t0
 
-        with st.spinner("🤖 Agent is processing..."):
-            start = time.time()
-            result = call_agent_api(user_query)
-            elapsed = time.time() - start
+        if not result:
+            st.stop()
 
-        if result:
-            intent = result.get("intent", "Unknown")
-            is_search = intent == "Flight Search"
-            is_reschedule = intent == "Flight Rescheduling"
+        intent = result.get("intent", "Unknown")
+        is_search = intent == "Flight Search"
+        is_resched = intent == "Flight Rescheduling"
+        status = result.get("status", "Unknown")
 
-            # ── Stats Row ─────────────────────────────────────
-            cols = st.columns(5)
-            with cols[0]:
-                emoji = "✅" if result["status"] == "Completed" else "⚠️"
-                st.markdown(f'<div class="stat-card"><h2>{emoji}</h2><p>{result["status"]}</p></div>', unsafe_allow_html=True)
-            with cols[1]:
-                intent_short = "Search" if is_search else "Reschedule" if is_reschedule else intent[:10]
-                st.markdown(f'<div class="stat-card"><h2>{"🔍" if is_search else "🔄"}</h2><p>{intent_short}</p></div>', unsafe_allow_html=True)
-            with cols[2]:
-                st.markdown(f'<div class="stat-card"><h2>{result.get("num_flights_found", 0)}</h2><p>Flights Found</p></div>', unsafe_allow_html=True)
-            with cols[3]:
-                dates_count = len(result.get("search_dates", [])) if is_search else 1
-                st.markdown(f'<div class="stat-card"><h2>{dates_count}</h2><p>Dates Searched</p></div>', unsafe_allow_html=True)
-            with cols[4]:
-                st.markdown(f'<div class="stat-card"><h2>{result.get("processing_time", elapsed):.1f}s</h2><p>Time</p></div>', unsafe_allow_html=True)
+        st.markdown("---")
 
-            st.markdown("")
+        # ── KPI Row ───────────────────────────────────────────
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            render_kpi(
+                "Completed" if status == "Completed" else status,
+                "Status",
+            )
+        with k2:
+            render_kpi(
+                "Search" if is_search else "Reschedule" if is_resched else intent[:12],
+                "Intent",
+            )
+        with k3:
+            render_kpi(str(result.get("num_flights_found", 0)), "Flights found")
+        with k4:
+            render_kpi(f"{result.get('processing_time', elapsed):.1f}s", "Processing time")
 
-            if result["status"] == "Completed":
-                flights = result.get("available_flights", [])
-                recommended = result.get("recommended_flight", {})
-                st.session_state["_current_flights"] = flights
+        st.markdown("")
 
-                col_flights, col_response = st.columns([1, 1])
+        # ── Completed Results ─────────────────────────────────
+        if status == "Completed":
+            flights = result.get("available_flights", [])
+            recommended = result.get("recommended_flight", {})
+            st.session_state["_flights"] = flights
 
-                with col_flights:
-                    if flights:
-                        title = f"✈️ Flights ({len(flights)} found"
-                        if is_search and result.get("search_dates"):
-                            title += f" across {len(result['search_dates'])} days"
-                        title += ")"
-                        st.markdown(f"##### {title}")
+            col_left, col_right = st.columns([1, 1], gap="large")
 
-                        # Show top 8 flights
-                        for flight in flights[:8]:
-                            is_rec = flight.get("flight_number") == recommended.get("flight_number", "")
-                            render_flight_card(flight, is_recommended=is_rec, show_date=is_search)
-
-                        if len(flights) > 8:
-                            st.caption(f"... and {len(flights) - 8} more flights")
-
-                    # Cost breakdown (rescheduling only)
-                    if is_reschedule:
-                        st.markdown("##### 💰 Cost Breakdown")
-                        fee = result.get("fee", 0)
-                        fare_diff = result.get("fare_difference", 0)
-                        total = result.get("total_cost", 0)
-
-                        cost_html = '<div class="cost-card">'
-                        cost_html += f'<div class="cost-row"><span>Rescheduling Fee</span><span>₹{fee:,.0f}</span></div>'
-                        if fare_diff > 0:
-                            cost_html += f'<div class="cost-row"><span>Fare Difference</span><span style="color: #f87171;">+₹{fare_diff:,.0f}</span></div>'
-                        elif fare_diff < 0:
-                            cost_html += f'<div class="cost-row"><span>Fare Savings</span><span style="color: #34d399;">-₹{abs(fare_diff):,.0f}</span></div>'
-                        cost_html += f'<div class="cost-row total"><span>Total</span><span style="color: #818cf8;">₹{total:,.0f}</span></div>'
-                        cost_html += '</div>'
-                        st.markdown(cost_html, unsafe_allow_html=True)
-
-                with col_response:
-                    st.markdown("##### 💬 Agent Response")
-                    icon = "✅" if is_reschedule else "🔍"
-                    label = "Confirmation" if is_reschedule else "Search Results"
-                    response_html = format_response_html(result["message"])
+            # ── Left: Flights ─────────────────────────────────
+            with col_left:
+                if flights:
+                    count_label = f"{len(flights)} flights"
+                    if is_search and result.get("search_dates"):
+                        count_label += f" across {len(result['search_dates'])} days"
                     st.markdown(
-                        f'<div class="response-card"><h3>{icon} {label}</h3>'
-                        f'<div style="line-height:1.7;">{response_html}</div></div>',
+                        f'<p class="section-label">Available flights · {count_label}</p>',
                         unsafe_allow_html=True,
                     )
 
-                    st.markdown("##### 📋 Workflow Steps")
-                    for step in result.get("steps", []):
-                        render_step(step)
+                    for flight in flights[:8]:
+                        is_rec = (
+                            flight.get("flight_number") == recommended.get("flight_number", "")
+                        )
+                        render_flight(flight, is_rec=is_rec, show_date=is_search)
 
-            elif result["status"] in ["Failed", "Incomplete", "Unsupported"]:
-                st.markdown("##### 💬 Response")
-                response_html = format_response_html(result["message"])
+                    if len(flights) > 8:
+                        st.caption(f"+{len(flights) - 8} more flights available")
+
+                # ── Cost Breakdown (rescheduling) ─────────────
+                if is_resched:
+                    st.markdown("")
+                    st.markdown('<p class="section-label">Cost breakdown</p>', unsafe_allow_html=True)
+                    fee = result.get("fee", 0)
+                    fare_diff = result.get("fare_difference", 0)
+                    total = result.get("total_cost", 0)
+
+                    cost_html = '<div class="card">'
+                    cost_html += f'<div class="cost-line"><span>Rescheduling fee</span><span>₹{fee:,.0f}</span></div>'
+                    if fare_diff > 0:
+                        cost_html += (
+                            f'<div class="cost-line"><span>Fare difference</span>'
+                            f'<span style="color:{C_ERROR};">+₹{fare_diff:,.0f}</span></div>'
+                        )
+                    elif fare_diff < 0:
+                        cost_html += (
+                            f'<div class="cost-line"><span>Fare savings</span>'
+                            f'<span style="color:{C_SUCCESS};">−₹{abs(fare_diff):,.0f}</span></div>'
+                        )
+                    cost_html += (
+                        f'<div class="cost-line cost-total">'
+                        f'<span>Total additional cost</span>'
+                        f'<span>₹{total:,.0f}</span></div>'
+                    )
+                    cost_html += '</div>'
+                    st.markdown(cost_html, unsafe_allow_html=True)
+
+            # ── Right: Response + Steps ───────────────────────
+            with col_right:
+                st.markdown('<p class="section-label">Agent response</p>', unsafe_allow_html=True)
+                resp_html = format_response(result.get("message", ""))
                 st.markdown(
-                    f'<div class="response-card" style="border-color: rgba(59,130,246,0.3);">'
-                    f'<h3>ℹ️ Agent Response</h3><div style="line-height:1.7;">{response_html}</div></div>',
+                    f'<div class="response-box">{resp_html}</div>',
                     unsafe_allow_html=True,
                 )
-                if result.get("steps"):
-                    st.markdown("##### 📋 Workflow Steps")
-                    for step in result.get("steps", []):
+
+                steps = result.get("steps", [])
+                if steps:
+                    st.markdown("")
+                    st.markdown(
+                        f'<p class="section-label">Workflow · {len(steps)} steps</p>',
+                        unsafe_allow_html=True,
+                    )
+                    with st.expander("View execution steps", expanded=False):
+                        for step in steps:
+                            render_step(step)
+
+        # ── Non-completed states ──────────────────────────────
+        elif status in ("Failed", "Incomplete", "Unsupported"):
+            resp_html = format_response(result.get("message", ""))
+            st.markdown(
+                f'<div class="response-box">{resp_html}</div>',
+                unsafe_allow_html=True,
+            )
+            steps = result.get("steps", [])
+            if steps:
+                with st.expander("View execution steps"):
+                    for step in steps:
                         render_step(step)
 
     elif process_btn and not user_query:
-        st.warning("Please enter a request.")
+        st.warning("Enter a request to get started.")
 
 
 # ══════════════════════════════════════════════════════════════
 # BOOKINGS PAGE
 # ══════════════════════════════════════════════════════════════
 
-elif page == "📋 Bookings":
-    st.markdown("""
-    <div class="main-header">
-        <h1>📋 Booking Database</h1>
-        <p>View all bookings. Use Booking IDs for rescheduling requests.</p>
-    </div>
-    """, unsafe_allow_html=True)
+elif page == "Bookings":
+    st.markdown('<p class="page-title">Bookings</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="page-subtitle">'
+        'All customer bookings. Reference booking IDs when requesting rescheduling.'
+        '</p>',
+        unsafe_allow_html=True,
+    )
 
-    bookings = get_bookings()
+    bookings = fetch_bookings()
     if bookings:
         df = pd.DataFrame(bookings)
-        cols = ["booking_id", "customer_name", "airline", "origin", "origin_code",
-                "destination", "destination_code", "travel_date", "status", "ticket_price"]
-        df = df[[c for c in cols if c in df.columns]]
-        df.columns = ["ID", "Customer", "Airline", "From", "IATA", "To", "IATA ", "Date", "Status", "₹ Price"]
+        display_cols = [
+            "booking_id", "customer_name", "airline",
+            "origin", "origin_code", "destination", "destination_code",
+            "travel_date", "status", "ticket_price",
+        ]
+        df = df[[c for c in display_cols if c in df.columns]]
+        rename = {
+            "booking_id": "Booking ID",
+            "customer_name": "Customer",
+            "airline": "Airline",
+            "origin": "From",
+            "origin_code": "IATA",
+            "destination": "To",
+            "destination_code": "IATA ",
+            "travel_date": "Date",
+            "status": "Status",
+            "ticket_price": "Price (₹)",
+        }
+        df = df.rename(columns=rename)
+
+        st.markdown(
+            f'<p class="section-label">{len(df)} bookings</p>',
+            unsafe_allow_html=True,
+        )
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
         st.info("No bookings found. Make sure the backend is running.")
@@ -474,25 +635,46 @@ elif page == "📋 Bookings":
 # LOGS PAGE
 # ══════════════════════════════════════════════════════════════
 
-elif page == "📊 Logs":
-    st.markdown("""
-    <div class="main-header">
-        <h1>📊 Execution Logs</h1>
-        <p>Audit trail of all agent workflow executions.</p>
-    </div>
-    """, unsafe_allow_html=True)
+elif page == "Logs":
+    st.markdown('<p class="page-title">Execution Logs</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="page-subtitle">'
+        'Audit trail of all agent workflow executions.'
+        '</p>',
+        unsafe_allow_html=True,
+    )
 
-    logs = get_logs()
+    logs = fetch_logs()
     if logs:
         df = pd.DataFrame(logs)
-        cols = ["timestamp", "booking_id", "detected_intent", "execution_status", "processing_time", "user_query"]
-        df = df[[c for c in cols if c in df.columns]]
-        df.columns = ["Timestamp", "Booking", "Intent", "Status", "Time", "Query"]
+        display_cols = [
+            "timestamp", "booking_id", "detected_intent",
+            "execution_status", "processing_time", "user_query",
+        ]
+        df = df[[c for c in display_cols if c in df.columns]]
+        rename = {
+            "timestamp": "Time",
+            "booking_id": "Booking",
+            "detected_intent": "Intent",
+            "execution_status": "Status",
+            "processing_time": "Duration",
+            "user_query": "Query",
+        }
+        df = df.rename(columns=rename)
+
+        st.markdown(
+            f'<p class="section-label">{len(df)} executions</p>',
+            unsafe_allow_html=True,
+        )
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-        st.markdown("#### 🔍 Details")
+        st.markdown("")
+        st.markdown('<p class="section-label">Details</p>', unsafe_allow_html=True)
         for i, log in enumerate(logs[:10]):
-            with st.expander(f"#{log.get('log_id', i+1)} — {log.get('timestamp', '')}"):
+            ts = log.get("timestamp", "")
+            intent = log.get("detected_intent", "")
+            status = log.get("execution_status", "")
+            with st.expander(f"{ts}  ·  {intent}  ·  {status}"):
                 st.json(log)
     else:
         st.info("No logs yet. Process a request first.")
