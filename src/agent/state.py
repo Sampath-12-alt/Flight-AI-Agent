@@ -23,6 +23,12 @@ class AgentState(TypedDict, total=False):
     # ── Input ─────────────────────────────────────────────────
     user_query: str               # Original customer request
 
+    # ── NLU Preprocessing ─────────────────────────────────────
+    original_query: str           # Original user input (before normalization)
+    normalized_query: str         # Cleaned/corrected query
+    nlu_corrections: list         # List of corrections applied
+    nlu_method: str               # "local", "llm", "hybrid", or "none"
+
     # ── Intent Detection ──────────────────────────────────────
     intent: str                   # "Flight Search" or "Flight Rescheduling"
     intent_confidence: str        # Confidence level ("high", "medium", "low")

@@ -12,6 +12,17 @@ from dotenv import load_dotenv
 # ── Load Environment Variables ────────────────────────────────
 load_dotenv()
 
+# Support Streamlit Cloud secrets (available when deployed on Streamlit Cloud)
+try:
+    import streamlit as st
+    if hasattr(st, "secrets"):
+        for key in ["GOOGLE_API_KEY", "AVIATIONSTACK_API_KEY"]:
+            if key not in os.environ and key in st.secrets:
+                os.environ[key] = st.secrets[key]
+except Exception:
+    pass  # Not running in Streamlit context
+
+
 # ── Project Paths ─────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"

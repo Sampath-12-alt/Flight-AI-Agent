@@ -36,6 +36,9 @@ from src.agent.prompts import (
     MISSING_BOOKING_ID_RESPONSE,
     MISSING_NEW_DATE_RESPONSE,
     MISSING_SEARCH_INFO_RESPONSE,
+    MISSING_ORIGIN_RESPONSE,
+    MISSING_DESTINATION_RESPONSE,
+    MISSING_DATE_RESPONSE,
 )
 
 # ── Business Services ────────────────────────────────────────
@@ -48,6 +51,44 @@ from src.services.logging_service import log_workflow_execution, log_step
 from src.services.flight_search_service import search_flights, search_multiple_dates
 from src.services.comparison_service import compare_flights, calculate_fare_difference
 from src.services.date_parser_service import parse_flexible_dates
+from src.services.nlu_service import normalize_query
+
+
+# ═══════════════════════════════════════════════════════════════
+# NLU PREPROCESSING NODE
+# ═══════════════════════════════════════════════════════════════
+
+def normalize_input(state: AgentState) -> dict:
+    """
+    Node 0: Normalize the raw user query.
+    Fixes spelling mistakes, expands abbreviations, and standardizes city names.
+    """
+    raw_query = state["user_query"]
+    log_step("NLU Normalization", f"Processing: '{raw_query[:80]}...'" if len(raw_query) > 80 else f"Processing: '{raw_query}'")
+
+    result = normalize_query(raw_query)
+
+    normalized = result["normalized"]
+    corrections = result["corrections"]
+    method = result["method"]
+
+    if corrections:
+        log_step("NLU Normalization",
+                 f"Applied {len(corrections)} corrections ({method}): {', '.join(corrections[:3])}")
+        step_text = f"✅ NLU: {len(corrections)} corrections applied ({method})"
+    else:
+        log_step("NLU Normalization", "Query is clean — no corrections needed.")
+        step_text = "✅ NLU: Query is clean"
+
+    return {
+        "original_query": raw_query,
+        "normalized_query": normalized,
+        "user_query": normalized,  # Update user_query so downstream nodes use the clean version
+        "nlu_corrections": corrections,
+        "nlu_method": method,
+        "steps_completed": state.get("steps_completed", []) + [step_text],
+        "services_called": state.get("services_called", []) + ["NLUService"],
+    }
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -58,9 +99,10 @@ def detect_intent(state: AgentState) -> dict:
     """
     Node 1: Analyze the customer request and detect intent.
     Routes to either Flight Search or Flight Rescheduling.
+    Uses the normalized query from the NLU stage.
     """
     log_step("Intent Detection", "Analyzing customer request...")
-    user_query = state["user_query"]
+    user_query = state.get("normalized_query", state["user_query"])
 
     try:
         if GOOGLE_API_KEY:
@@ -104,9 +146,10 @@ def detect_intent(state: AgentState) -> dict:
 def extract_search_entities(state: AgentState) -> dict:
     """
     Search Node 1: Extract origin, destination, date phrase, and preferences.
+    Uses the normalized query from the NLU stage.
     """
     log_step("Search Extraction", "Extracting travel search details...")
-    user_query = state["user_query"]
+    user_query = state.get("normalized_query", state["user_query"])
 
     try:
         if GOOGLE_API_KEY:
@@ -391,9 +434,9 @@ def generate_search_response_node(state: AgentState) -> dict:
 # ═══════════════════════════════════════════════════════════════
 
 def extract_entities(state: AgentState) -> dict:
-    """Reschedule Node 1: Extract booking ID and new travel date."""
+    """Reschedule Node 1: Extract booking ID and new travel date. Uses normalized query."""
     log_step("Entity Extraction", "Extracting booking ID and travel date...")
-    user_query = state["user_query"]
+    user_query = state.get("normalized_query", state["user_query"])
 
     try:
         if GOOGLE_API_KEY:
@@ -738,12 +781,30 @@ def handle_missing_info_node(state: AgentState) -> dict:
 
 
 def handle_missing_search_info_node(state: AgentState) -> dict:
-    """Handle cases where flight search info is missing."""
+    """
+    Handle cases where flight search info is missing.
+    Detects which specific field is missing and asks only for that.
+    """
+    origin = state.get("search_origin_code", "")
+    destination = state.get("search_destination_code", "")
+
+    # Determine which field is missing and give a specific response
+    if not origin and destination:
+        response = MISSING_ORIGIN_RESPONSE
+        detail = "Missing origin city"
+    elif origin and not destination:
+        response = MISSING_DESTINATION_RESPONSE
+        detail = "Missing destination city"
+    else:
+        # Both missing or other case — use generic response
+        response = MISSING_SEARCH_INFO_RESPONSE
+        detail = "Missing search details"
+
     return {
-        "response": MISSING_SEARCH_INFO_RESPONSE,
+        "response": response,
         "response_generated": True,
         "status": "Incomplete",
-        "steps_completed": state.get("steps_completed", []) + ["ℹ️ Missing Search Info — Requested"],
+        "steps_completed": state.get("steps_completed", []) + [f"ℹ️ {detail} — Requested"],
     }
 
 
@@ -842,6 +903,9 @@ def _keyword_intent_detection(query: str) -> str:
     reschedule_keywords = [
         "reschedule", "change my flight", "modify booking", "move my flight",
         "change date", "postpone", "prepone", "new date", "modify",
+        "change my ticket", "move my ticket", "shift my flight",
+        "shift date", "shift travel", "change booking",
+        "move booking", "update booking", "change flight",
     ]
     for kw in reschedule_keywords:
         if kw in query_lower:
@@ -857,15 +921,31 @@ def _keyword_intent_detection(query: str) -> str:
         "search", "find", "look for", "show me flights", "i want to travel",
         "i need a flight", "flights from", "cheapest flight", "any flights",
         "available flights", "fly from", "want to fly", "book a flight",
-        "find me", "looking for flights",
+        "find me", "looking for flights", "show flights", "need a flight",
+        "need flight", "get me a flight", "morning flights", "evening flights",
+        "direct flights", "nonstop flights", "cheap flight", "fastest flight",
+        "flight under", "want to travel", "travel from",
     ]
     for kw in search_keywords:
         if kw in query_lower:
             return "Flight Search"
 
-    # Check for city-to-city patterns
+    # Check for city-to-city patterns (e.g., "hyd to mum", "delhi to mumbai")
     if re.search(r"from\s+\w+\s+to\s+\w+", query_lower):
         return "Flight Search"
+    if re.search(r"\w+\s+to\s+\w+", query_lower):
+        # Check if any known city names or codes are present
+        from src.services.nlu_service import CITY_ALIASES, CITY_SPELLING_CORRECTIONS
+        words = set(re.findall(r"\w+", query_lower))
+        city_words = set(CITY_ALIASES.keys()) | set(CITY_SPELLING_CORRECTIONS.keys())
+        # Also add some common city names
+        city_words.update([
+            "delhi", "mumbai", "bangalore", "hyderabad", "chennai",
+            "kolkata", "goa", "jaipur", "pune", "ahmedabad", "kochi",
+            "lucknow", "chandigarh",
+        ])
+        if words & city_words:
+            return "Flight Search"
 
     return "Unsupported"
 
@@ -970,6 +1050,9 @@ def build_agent_graph() -> StateGraph:
     graph = StateGraph(AgentState)
 
     # ── Add Nodes ─────────────────────────────────────────────
+    # NLU Preprocessing
+    graph.add_node("normalize_input", normalize_input)
+
     # Shared
     graph.add_node("detect_intent", detect_intent)
     graph.add_node("log_execution", log_execution_node)
@@ -996,7 +1079,10 @@ def build_agent_graph() -> StateGraph:
     graph.add_node("handle_missing_info", handle_missing_info_node)
 
     # ── Entry Point ───────────────────────────────────────────
-    graph.set_entry_point("detect_intent")
+    graph.set_entry_point("normalize_input")
+
+    # ── NLU → Intent Detection ────────────────────────────────
+    graph.add_edge("normalize_input", "detect_intent")
 
     # ── Intent Router (3-way split) ───────────────────────────
     graph.add_conditional_edges("detect_intent", route_after_intent, {
@@ -1072,6 +1158,10 @@ def run_agent(user_query: str) -> AgentState:
 
     initial_state: AgentState = {
         "user_query": user_query,
+        # NLU fields
+        "original_query": "", "normalized_query": "",
+        "nlu_corrections": [], "nlu_method": "",
+        # Intent
         "intent": "", "intent_confidence": "",
         # Search fields
         "search_origin": "", "search_origin_code": "",

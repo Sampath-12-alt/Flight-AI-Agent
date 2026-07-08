@@ -273,39 +273,112 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-# ── API Helpers ───────────────────────────────────────────────
+# ── Mode Detection ────────────────────────────────────────────
+# Supports two modes:
+#   1. DIRECT: Import agent directly (for Streamlit Cloud deployment)
+#   2. API:    Call FastAPI backend (for local dev with separate backend)
+
+def _check_api_available() -> bool:
+    """Check if the FastAPI backend is reachable."""
+    try:
+        r = requests.get(f"{FASTAPI_URL}/health", timeout=2)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+USE_API_MODE = _check_api_available()
+
+if not USE_API_MODE:
+    # Direct mode: import agent and database directly
+    from src.agent.graph import run_agent
+    from src.database.sqlite import init_db, seed_sample_data, get_all_bookings, get_all_logs
+
+    # Initialize database on first run
+    if "_db_initialized" not in st.session_state:
+        init_db()
+        seed_sample_data()
+        st.session_state["_db_initialized"] = True
+
+
+# ── Data Helpers ──────────────────────────────────────────────
 
 def call_agent(query: str) -> dict | None:
-    """Send a query to the agent backend."""
-    try:
-        r = requests.post(
-            f"{FASTAPI_URL}/agent/process",
-            json={"query": query},
-            timeout=120,
-        )
-        return r.json() if r.status_code == 200 else None
-    except requests.exceptions.ConnectionError:
-        st.error("Cannot connect to backend. Run `python main.py` first.")
-        return None
-    except Exception as e:
-        st.error(f"Request failed: {e}")
-        return None
+    """Process a query — via API or directly."""
+    if USE_API_MODE:
+        try:
+            r = requests.post(
+                f"{FASTAPI_URL}/agent/process",
+                json={"query": query},
+                timeout=120,
+            )
+            return r.json() if r.status_code == 200 else None
+        except requests.exceptions.ConnectionError:
+            st.error("Cannot connect to backend. Run `python main.py` first.")
+            return None
+        except Exception as e:
+            st.error(f"Request failed: {e}")
+            return None
+    else:
+        # Direct mode: call agent in-process
+        try:
+            result = run_agent(query)
+            # Map agent state to the API response format
+            return {
+                "status": result.get("status", "Unknown"),
+                "intent": result.get("intent", ""),
+                "booking_id": result.get("booking_id", ""),
+                "fee": result.get("fee_amount", 0),
+                "total_cost": result.get("total_cost", 0),
+                "fare_difference": result.get("fare_difference", 0),
+                "recommended_flight": result.get("recommended_flight", {}),
+                "available_flights": result.get("ranked_flights", []),
+                "search_origin": result.get("search_origin", ""),
+                "search_destination": result.get("search_destination", ""),
+                "search_dates": result.get("search_dates", []),
+                "date_interpretation": result.get("date_interpretation", ""),
+                "num_flights_found": result.get("num_flights_found", 0),
+                "user_preferences": result.get("user_preferences", ""),
+                "message": result.get("response", "No response generated."),
+                "steps": result.get("steps_completed", []),
+                "processing_time": result.get("processing_time", 0),
+                # NLU fields
+                "original_query": result.get("original_query", ""),
+                "normalized_query": result.get("normalized_query", ""),
+                "nlu_corrections": result.get("nlu_corrections", []),
+                "nlu_method": result.get("nlu_method", ""),
+            }
+        except Exception as e:
+            st.error(f"Agent error: {e}")
+            return None
 
 
 def fetch_bookings() -> list:
-    try:
-        r = requests.get(f"{FASTAPI_URL}/bookings", timeout=10)
-        return r.json().get("bookings", []) if r.status_code == 200 else []
-    except Exception:
-        return []
+    if USE_API_MODE:
+        try:
+            r = requests.get(f"{FASTAPI_URL}/bookings", timeout=10)
+            return r.json().get("bookings", []) if r.status_code == 200 else []
+        except Exception:
+            return []
+    else:
+        try:
+            return get_all_bookings()
+        except Exception:
+            return []
 
 
 def fetch_logs() -> list:
-    try:
-        r = requests.get(f"{FASTAPI_URL}/logs", timeout=10)
-        return r.json().get("logs", []) if r.status_code == 200 else []
-    except Exception:
-        return []
+    if USE_API_MODE:
+        try:
+            r = requests.get(f"{FASTAPI_URL}/logs", timeout=10)
+            return r.json().get("logs", []) if r.status_code == 200 else []
+        except Exception:
+            return []
+    else:
+        try:
+            return get_all_logs()
+        except Exception:
+            return []
+
 
 
 # ── Render Helpers ────────────────────────────────────────────

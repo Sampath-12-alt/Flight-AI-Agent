@@ -15,14 +15,26 @@ INTENT_DETECTION_PROMPT = """You are an intent classifier for a travel support A
 Analyze the customer request and classify it into one of these intents:
 
 1. "Flight Search" — The customer wants to find or search for available flights.
-   Keywords: search, find, look for, show me flights, I want to travel, I need a flight,
-   flights from X to Y, cheapest flight, any flights, available flights
+   Indicators: search, find, look for, show flights, want to travel, need a flight,
+   flights from X to Y, cheapest flight, any flights, available flights, book a flight,
+   fly from, want to fly, morning flights, direct flights, nonstop, under [amount].
+   Also matches when the user mentions two cities (origin → destination) even without
+   explicit search keywords.
 
 2. "Flight Rescheduling" — The customer wants to change/modify an existing booking.
-   Keywords: reschedule, change my flight, modify booking, move my flight, new date,
-   BK followed by numbers (booking ID), change date, postpone
+   Indicators: reschedule, change my flight, modify booking, move my flight, new date,
+   BK followed by numbers (booking ID), change date, postpone, prepone, shift date,
+   change my ticket, move my ticket.
 
 3. "Unsupported" — Anything else (cancellation, refund, hotel, etc.)
+
+IMPORTANT: The request may contain spelling mistakes, abbreviations, or informal language.
+Examples of valid inputs you MUST handle:
+- "find fligts hyd to mumbii" → Flight Search
+- "cheapst flight mum to del" → Flight Search
+- "reschdule booking BK1024" → Flight Rescheduling
+- "mov my flite to friday" → Flight Rescheduling
+- "need flight tomorrow" → Flight Search
 
 Customer Request: "{user_query}"
 
@@ -47,7 +59,10 @@ Return a JSON object with:
 Rules:
 - The booking ID always starts with "BK" followed by 4+ digits.
 - Convert any date format to YYYY-MM-DD.
-- If the year is not specified, assume the current year.
+- If the year is not specified, assume the current year (2026).
+- Understand informal date references: "friday" means the coming Friday,
+  "next week" means next Monday, "tomorrow" means the next day.
+- Handle spelling mistakes: "reschdule", "chnge", "mov" all indicate rescheduling.
 - Return ONLY the JSON object, no markdown formatting.
 """
 
@@ -65,10 +80,19 @@ Return a JSON object with:
 - "preference": User's preference if stated (e.g., "cheapest", "fastest", "nonstop", "earliest"). Return "cheapest" as default.
 
 Common Indian airport codes:
-DEL=Delhi, BOM=Mumbai, BLR=Bangalore, HYD=Hyderabad, MAA=Chennai,
-CCU=Kolkata, GOI=Goa, JAI=Jaipur, PNQ=Pune, AMD=Ahmedabad,
-COK=Kochi, TRV=Trivandrum, IXC=Chandigarh, GAU=Guwahati,
-LKO=Lucknow, PAT=Patna, BBI=Bhubaneswar, IXR=Ranchi
+DEL=Delhi, BOM=Mumbai, BLR=Bangalore/Bengaluru, HYD=Hyderabad,
+MAA=Chennai/Madras, CCU=Kolkata/Calcutta, GOI=Goa, JAI=Jaipur,
+PNQ=Pune, AMD=Ahmedabad, COK=Kochi/Cochin, TRV=Trivandrum,
+IXC=Chandigarh, GAU=Guwahati, LKO=Lucknow, PAT=Patna,
+BBI=Bhubaneswar, IXR=Ranchi, VTZ=Visakhapatnam/Vizag
+
+City abbreviations to recognize:
+hyd=Hyderabad, blr=Bangalore, mum=Mumbai, del=Delhi, maa=Chennai,
+ccu=Kolkata, vizag=Visakhapatnam, madras=Chennai, calcutta=Kolkata,
+bombay=Mumbai, bengaluru=Bangalore, cochin=Kochi
+
+IMPORTANT: The request may contain spelling mistakes or abbreviations.
+For example, "hyd to mum" means Hyderabad to Mumbai.
 
 Return ONLY the JSON object, no markdown formatting.
 """
@@ -178,4 +202,26 @@ MISSING_SEARCH_INFO_RESPONSE = (
     "2. Where are you flying to? (Destination city)\n"
     "3. When do you want to travel? (Date or flexible phrase like 'next week')\n\n"
     "Example: 'Find flights from Delhi to Mumbai next week.'"
+)
+
+MISSING_ORIGIN_RESPONSE = (
+    "Sure! I can help you find flights.\n\n"
+    "Which city would you like to travel from?\n\n"
+    "Example: 'From Delhi' or 'From Hyderabad'"
+)
+
+MISSING_DESTINATION_RESPONSE = (
+    "Got it! And where would you like to fly to?\n\n"
+    "Please tell me your destination city.\n\n"
+    "Example: 'To Mumbai' or 'To Bangalore'"
+)
+
+MISSING_DATE_RESPONSE = (
+    "Great choice! When would you like to travel?\n\n"
+    "You can say things like:\n"
+    "• 'Tomorrow'\n"
+    "• 'Next week'\n"
+    "• 'July 25'\n"
+    "• 'This weekend'\n\n"
+    "Example: 'Next week' or '2026-08-15'"
 )
