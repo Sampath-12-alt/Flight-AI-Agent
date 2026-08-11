@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+# Install CPU-only PyTorch first to avoid massive CUDA library downloads
+RUN pip install --default-timeout=100 torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the application code
+COPY . .
+
+# Environment variables
+ENV STREAMLIT_PORT=8501
+
+# Expose Streamlit port
+EXPOSE 8501
+
+# Command to run the application
+CMD ["streamlit", "run", "src/ui/streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]

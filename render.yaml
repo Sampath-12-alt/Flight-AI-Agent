@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: ai-flight-agent-backend
+    env: docker
+    dockerfilePath: ./Dockerfile.backend
+    region: oregon
+    plan: starter
+    disk:
+      name: data_volume
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: 10000
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: AVIATIONSTACK_API_KEY
+        sync: false
+
+  - type: web
+    name: ai-flight-agent-frontend
+    env: docker
+    dockerfilePath: ./Dockerfile.frontend
+    region: oregon
+    plan: free
+    envVars:
+      - key: FASTAPI_URL
+        fromService:
+          type: web
+          name: ai-flight-agent-backend
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: GOOGLE_API_KEY
+        sync: false

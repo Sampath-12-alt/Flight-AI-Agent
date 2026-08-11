@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+# Install CPU-only PyTorch first to avoid massive CUDA library downloads
+RUN pip install --default-timeout=100 torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the application code
+COPY . .
+
+# Environment variables
+ENV API_HOST=0.0.0.0
+ENV API_PORT=8000
+
+# Expose the API port
+EXPOSE 8000
+
+# Start FastAPI
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
